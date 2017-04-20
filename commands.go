@@ -27,6 +27,7 @@ type PermissionCommand struct {
 	Command        *CommandConstructor
 }
 
+//TODO use map?
 type CommandConstructors []*CommandConstructor
 type Commands []Command
 type PermissionsCommand []PermissionCommand

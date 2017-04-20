@@ -222,7 +222,8 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		},
 	}
 
-	join := CommandConstructor{
+	//TODO implement proper join (join more channels maybe? would probably require dca)
+	/*join := CommandConstructor{
 		Names:             []string{"join", "j"},
 		Permission:        "join",
 		DefaultPermission: true,
@@ -248,9 +249,9 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 
 			return nil
 		},
-	}
+	}*/
 
-	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &join)
+	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove/*, &join*/)
 
 	go func() {
 		for {
@@ -336,7 +337,7 @@ func (player *Player) PlayStream(stream Playable) {
 	for {
 		select {
 		case <-player.StopChannel:
-			//stream.Stop()
+			//stream.Stop() //TODO make the stream source cancelable (context maybe?)
 			player.FFmpeg.Process.Kill()
 			return
 		default:
