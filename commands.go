@@ -2,9 +2,9 @@ package main
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"reflect"
 	"strings"
 	"time"
-	"reflect"
 )
 
 type CommandConstructor struct {

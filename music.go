@@ -251,7 +251,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		},
 	}*/
 
-	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove/*, &join*/)
+	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove /*, &join*/)
 
 	go func() {
 		for {
@@ -363,8 +363,8 @@ func (player *Player) Stop() {
 		player.StopChannel <- true
 	}
 
-	err := player.VoiceConnection.Disconnect()
+	/*err := player.VoiceConnection.Disconnect()
 	if err != nil {
 		log.Println(err)
-	}
+	}*/
 }
