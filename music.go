@@ -62,6 +62,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 
 	//d.VoiceConnections[guild].LogLevel = discordgo.LogDebug
 
+	//TODO make song recognition part of a service interface
 	queueSong := CommandConstructor{
 		Names:             []string{"queue", "q", "p"},
 		Permission:        "queue",
@@ -106,6 +107,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 				s.ChannelMessageSend(m.ChannelID, "No playlist matched")
 			}
 
+			//TODO implement youtube playlist
 			s.ChannelMessageSend(m.ChannelID, "Playlist matched")
 
 			return nil
@@ -282,8 +284,6 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		for {
 			select {
 			case song := <-player.SongChannel:
-				player.IsPlaying = true
-
 				player.DgoSession.UpdateStatus(0, song.Info.Title)
 				player.DgoSession.ChannelTopicEdit(Config.TextChannel, "Playing: "+song.Info.Title)
 
@@ -292,13 +292,8 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 				player.DgoSession.UpdateStatus(0, "")
 				player.DgoSession.ChannelTopicEdit(Config.TextChannel, "")
 
-				player.IsPlaying = false
-
 				player.NextChannel <- true
 			case <-player.StopChannel:
-				player.DgoSession.UpdateStatus(0, "")
-				player.DgoSession.ChannelTopicEdit(Config.TextChannel, "")
-				player.IsPlaying = false
 				return
 			}
 		}
