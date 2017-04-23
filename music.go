@@ -68,10 +68,6 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		}
 	}
 
-	for player.VoiceConnection.Ready == false {
-		runtime.Gosched()
-	}
-
 	//d.VoiceConnections[guild].LogLevel = discordgo.LogDebug
 
 	//TODO make song recognition part of a service interface
@@ -116,10 +112,6 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 			}
 
 			listRegexp := regexp.MustCompile(`youtube\.com/(?:playlist\?list=|watch\?v=[\w-]{11}(?:&index=\d+)*&list=)([\w-]{34}\b)`)
-
-			if !listRegexp.MatchString(raw[0]) {
-				s.ChannelMessageSend(m.ChannelID, "No playlist matched")
-			}
 
 			service, err := youtube.New(player.ClientConfig.Client(context.Background()))
 			if err != nil {
@@ -192,7 +184,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
 			var formatedList string
 
-			queue, err := player.Queue.GetAll()
+			queue, remaining, err := player.Queue.GetFirstN(10)
 			if err != nil {
 				return err
 			}
@@ -201,7 +193,11 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 			for pos, item := range queue {
 				formatedList = strings.Join([]string{formatedList, strconv.Itoa(pos + 1), ". ", item.Info.Title, "\n"}, "")
 			}
+			if remaining > 0 {
+				formatedList += fmt.Sprintf("+ %d more...", remaining)
+			}
 			s.ChannelMessageSend(m.ChannelID, formatedList)
+
 			return nil
 		},
 	}
@@ -357,6 +353,10 @@ func (player *Player) PlayStream(stream Playable) {
 
 	player.VoiceConnection.Speaking(true)
 	defer player.VoiceConnection.Speaking(false)
+
+	for player.VoiceConnection.Ready == false {
+		runtime.Gosched()
+	}
 
 	go dgvoice.SendPCM(player.VoiceConnection, player.SendChannel)
 
