@@ -24,7 +24,7 @@ import (
 type Player struct {
 	IsPlaying       bool
 	Queue           Queue
-	QueueChannel    chan Playable
+	QueueChannel    chan QueueItem
 	SongChannel     chan QueueItem
 	NextChannel     chan bool
 	StopChannel     chan bool
@@ -53,7 +53,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		IsPlaying:       false,
 		Queue:           Queue{},
 		SongChannel:     make(chan QueueItem),
-		QueueChannel:    make(chan Playable),
+		QueueChannel:    make(chan QueueItem),
 		NextChannel:     make(chan bool),
 		StopChannel:     make(chan bool),
 		SendChannel:     make(chan []int16, 2),
@@ -90,7 +90,13 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 						log.Print(err)
 					}
 
-					player.QueueChannel <- YoutubeItem{video, nil}
+					stream := YoutubeItem{video, nil}
+
+					player.QueueChannel <- QueueItem{
+						Stream: stream,
+						Info: stream.GetInfo(),
+						RequestedBy: m.Author.Username,
+					}
 				} else {
 					s.ChannelMessageSend(m.ChannelID, "No video matched")
 				}
@@ -134,7 +140,13 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 							continue
 						}
 
-						player.QueueChannel <- YoutubeItem{video, nil}
+						stream := YoutubeItem{video, nil}
+
+						player.QueueChannel <- QueueItem{
+							Stream: stream,
+							Info:stream.GetInfo(),
+							RequestedBy: m.Author.Username,
+						}
 					}
 				}
 			}
@@ -288,9 +300,59 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		},
 	}*/
 
-	//TODO info: show info about currently playing song
+	info := CommandConstructor{
+		Names: []string{"info", "i"},
+		Permission: "info",
+		DefaultPermission: true,
+		NoArguments: false,
+		MinArguments: 0,
+		MaxArguments: 1,
+		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			var id int = 0
+			if len(raw) > 0 {
+				if raw[0] != "" {
+					parsed, err := strconv.Atoi(raw[0])
+					if err != nil {
+						return err
+					}
 
-	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove /*, &join*/)
+					id = parsed - 1
+				}
+			}
+
+			song, err := player.Queue.Get(id)
+			if err != nil {
+				return err
+			}
+
+			embed := &discordgo.MessageEmbed{
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Name: "Title:",
+						Value: song.Info.Title,
+					},
+					{
+						Name:  "Requested by:",
+						Value: song.RequestedBy,
+						Inline: true,
+					},
+					{
+						Name:  "Length:",
+						Value: song.Info.Duration,
+						Inline: true,
+					},
+				},
+			}
+
+			_, err = s.ChannelMessageSendEmbed(m.ChannelID, embed)
+
+			return err
+		},
+	}
+
+	//TODO info: show info about currently playing song and song with entered id
+
+	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info /*, &join*/)
 
 	go func() {
 		for {
@@ -355,7 +417,7 @@ func (player *Player) PlayStream(stream Playable) {
 	defer player.VoiceConnection.Speaking(false)
 
 	for player.VoiceConnection.Ready == false {
-		runtime.Gosched()
+		runtime.Gosched()	//should I put this before executing ffmpeg, will stdin buffer?
 	}
 
 	go dgvoice.SendPCM(player.VoiceConnection, player.SendChannel)
@@ -394,6 +456,7 @@ func (player *Player) Stop() {
 		player.StopChannel <- true
 	}
 
+	//wait before implementing join
 	/*err := player.VoiceConnection.Disconnect()
 	if err != nil {
 		log.Println(err)

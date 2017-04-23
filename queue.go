@@ -19,14 +19,14 @@ type Playable interface {
 }
 
 type ItemInfo struct {
-	Title       string
-	Duration    string
-	RequestedBy string
+	Title    string
+	Duration string
 }
 
 type QueueItem struct {
-	Stream Playable
-	Info   ItemInfo
+	Stream      Playable
+	Info        ItemInfo
+	RequestedBy string
 }
 
 type ErrItemNotFound struct {
@@ -37,16 +37,11 @@ func (err ErrItemNotFound) Error() string {
 	return fmt.Sprintf("Item number %d not found", err.item+1)
 }
 
-func (q *Queue) Add(item Playable) {
-	queueItem := QueueItem{
-		Stream: item,
-		Info:   item.GetInfo(),
-	}
-
+func (q *Queue) Add(item QueueItem) {
 	q.Lock()
 	defer q.Unlock()
 
-	q.queue = append(q.queue, queueItem)
+	q.queue = append(q.queue, item)
 }
 
 func (q *Queue) Remove(i int) error {
@@ -84,6 +79,17 @@ func (q *Queue) GetFirst() (QueueItem, error) {
 	} else {
 		return QueueItem{}, errors.New("Queue is empty")
 	}
+}
+
+func (q *Queue) Get(i int) (QueueItem, error) {
+	q.RLock()
+	defer q.RUnlock()
+
+	if len(q.queue) <= i {
+		return QueueItem{}, errors.New("Item doesn't exist")
+	}
+
+	return q.queue[i], nil
 }
 
 func (q *Queue) GetFirstN(n int) ([]QueueItem, int, error) {
