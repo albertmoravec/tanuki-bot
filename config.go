@@ -15,6 +15,9 @@ type config struct {
 
 	//Encoder settings
 	FFmpegPath string `yaml:"ffmpegPath"` // optional, will look for FFmpeg executable in environment or its folder if not specified
+
+	//Service settings
+	YoutubeAPIKey string `yaml:"ytApiKey"`
 }
 
 func (config *config) Load(configPath string) {

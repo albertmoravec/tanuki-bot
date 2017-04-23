@@ -23,6 +23,7 @@ func init() {
 	flag.StringVar(&Config.TextChannel, "t", Config.TextChannel, "Text channel ID")
 	flag.StringVar(&Config.VoiceChannel, "v", Config.VoiceChannel, "Voice channel ID")
 	flag.StringVar(&Config.Owner, "o", Config.Owner, "Owner ID")
+	flag.StringVar(&Config.YoutubeAPIKey, "y", Config.YoutubeAPIKey, "Youtube API key")
 
 	flag.StringVar(&Config.FFmpegPath, "ffmpeg", Config.FFmpegPath, "FFmpeg executable path")
 	flag.Parse()
@@ -51,7 +52,7 @@ func main() {
 		return
 	}
 
-	InitPlayer(d, Config.Guild, Config.VoiceChannel)
+	InitPlayer(d, Config.Guild, Config.VoiceChannel, Config.YoutubeAPIKey)
 
 	log.Println("Up and running!")
 

@@ -2,12 +2,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/bwmarrin/dgvoice"
 	"github.com/bwmarrin/discordgo"
 	"github.com/rylio/ytdl"
+	"golang.org/x/oauth2/jwt"
+	"google.golang.org/api/youtube/v3"
 	"io"
 	"log"
 	"os"
@@ -29,6 +32,8 @@ type Player struct {
 	FFmpeg          *exec.Cmd
 	SendChannel     chan []int16
 	DgoSession      *discordgo.Session
+
+	ClientConfig *jwt.Config
 }
 
 const (
@@ -37,7 +42,7 @@ const (
 	frameSize int = 960   // uint16 size of each audio frame
 )
 
-func InitPlayer(s *discordgo.Session, gID string, vID string) {
+func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath string) {
 	voiceConn, err := s.ChannelVoiceJoin(gID, vID, false, false)
 	if err != nil {
 		fmt.Println(err)
@@ -54,6 +59,13 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		SendChannel:     make(chan []int16, 2),
 		VoiceConnection: voiceConn,
 		DgoSession:      s,
+	}
+
+	if ytApiKeyPath != "" {
+		player.ClientConfig, err = LoadYoutubeAPIConfig(ytApiKeyPath)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 
 	for player.VoiceConnection.Ready == false {
@@ -77,14 +89,12 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 				id := youtubeRegexp.FindStringSubmatch(link)
 
 				if len(id) > 0 {
-					log.Println("Match found")
 					video, err := ytdl.GetVideoInfo(id[1])
 					if err != nil {
 						log.Print(err)
 					}
-					log.Println("Sending to channel")
+
 					player.QueueChannel <- YoutubeItem{video, nil}
-					log.Println("Sent successfuly")
 				} else {
 					s.ChannelMessageSend(m.ChannelID, "No video matched")
 				}
@@ -99,16 +109,43 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		DefaultPermission: true,
 		NoArguments:       false,
 		MinArguments:      1,
-		MaxArguments:      1,
+		MaxArguments:      -1,
 		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-			queueRegexp := regexp.MustCompile(`youtube\.com/(?:playlist\?list=|watch\?v=[\w-]{11}(?:&index=\d+)*&list=)([\w-]{34}\b)`)
+			if player.ClientConfig == nil {
+				return errors.New("No Youtube API key provided")
+			}
 
-			if !queueRegexp.MatchString(raw[0]) {
+			listRegexp := regexp.MustCompile(`youtube\.com/(?:playlist\?list=|watch\?v=[\w-]{11}(?:&index=\d+)*&list=)([\w-]{34}\b)`)
+
+			if !listRegexp.MatchString(raw[0]) {
 				s.ChannelMessageSend(m.ChannelID, "No playlist matched")
 			}
 
-			//TODO implement youtube playlist
-			s.ChannelMessageSend(m.ChannelID, "Playlist matched")
+			service, err := youtube.New(player.ClientConfig.Client(context.Background()))
+			if err != nil {
+				return err
+			}
+
+			for _, link := range raw {
+				id := listRegexp.FindStringSubmatch(link)
+
+				if len(id) > 0 {
+					playlistItems, err := service.PlaylistItems.List("snippet").PlaylistId(id[1]).MaxResults(50).Do()
+					if err != nil {
+						return err
+					}
+
+					for _, video := range playlistItems.Items {
+						video, err := ytdl.GetVideoInfo(video.Snippet.ResourceId.VideoId)
+						if err != nil {
+							log.Println(err)
+							continue
+						}
+
+						player.QueueChannel <- YoutubeItem{video, nil}
+					}
+				}
+			}
 
 			return nil
 		},
@@ -122,8 +159,9 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		MinArguments:      0,
 		MaxArguments:      -1,
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-			log.Println("Requesting skip")
+
 			if player.IsPlaying {
+				log.Println("Requesting skip")
 				player.StopChannel <- true
 			}
 			return nil
@@ -159,6 +197,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 				return err
 			}
 
+			//TODO use embed(s)
 			for pos, item := range queue {
 				formatedList = strings.Join([]string{formatedList, strconv.Itoa(pos + 1), ". ", item.Info.Title, "\n"}, "")
 			}
@@ -253,6 +292,8 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 		},
 	}*/
 
+	//TODO info: show info about currently playing song
+
 	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove /*, &join*/)
 
 	go func() {
@@ -274,28 +315,22 @@ func InitPlayer(s *discordgo.Session, gID string, vID string) {
 				if err == nil {
 					player.SongChannel <- song
 				}
-			case <-player.StopChannel:
-				return
 			}
 		}
 	}()
 
 	go func() {
 		for {
-			select {
-			case song := <-player.SongChannel:
-				player.DgoSession.UpdateStatus(0, song.Info.Title)
-				player.DgoSession.ChannelTopicEdit(Config.TextChannel, "Playing: "+song.Info.Title)
+			song := <-player.SongChannel
+			player.DgoSession.UpdateStatus(0, song.Info.Title)
+			player.DgoSession.ChannelTopicEdit(Config.TextChannel, "Playing: "+song.Info.Title)
 
-				player.PlayStream(song.Stream)
+			player.PlayStream(song.Stream)
 
-				player.DgoSession.UpdateStatus(0, "")
-				player.DgoSession.ChannelTopicEdit(Config.TextChannel, "")
+			player.DgoSession.UpdateStatus(0, "")
+			player.DgoSession.ChannelTopicEdit(Config.TextChannel, "")
 
-				player.NextChannel <- true
-			case <-player.StopChannel:
-				return
-			}
+			player.NextChannel <- true
 		}
 	}()
 }
@@ -332,6 +367,7 @@ func (player *Player) PlayStream(stream Playable) {
 	for {
 		select {
 		case <-player.StopChannel:
+			log.Println("Skip received")
 			//stream.Stop() //TODO make the stream source cancelable (context maybe?)
 			player.FFmpeg.Process.Kill()
 			return

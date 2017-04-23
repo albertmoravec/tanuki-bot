@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
-	"github.com/rylio/ytdl"
-	"io"
-	"os/exec"
-	"os"
 	"fmt"
+	"github.com/rylio/ytdl"
+	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jwt"
+	"google.golang.org/api/youtube/v3"
+	"io"
+	"io/ioutil"
+	"os"
+	"os/exec"
 )
 
 type YoutubeItem struct {
@@ -64,4 +68,13 @@ func (yt YoutubeItem) GetInfo() ItemInfo {
 		Title:    yt.Video.Title,
 		Duration: yt.Video.Duration.String(),
 	}
+}
+
+func LoadYoutubeAPIConfig(filePath string) (*jwt.Config, error) {
+	token, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return google.JWTConfigFromJSON(token, youtube.YoutubeScope)
 }
