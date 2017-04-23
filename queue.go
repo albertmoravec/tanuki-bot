@@ -86,6 +86,30 @@ func (q *Queue) GetFirst() (QueueItem, error) {
 	}
 }
 
+func (q *Queue) GetFirstN(n int) ([]QueueItem, int, error) {
+	q.RLock()
+	defer q.RUnlock()
+
+	if len(q.queue) == 0 {
+		return nil, 0, errors.New("Queue is empty")
+	}
+
+	var queueCopy []QueueItem
+	var remaining int
+
+	if len(q.queue) > n {
+		queueCopy = make([]QueueItem, n)
+		copy(queueCopy, q.queue[:n])
+		remaining = len(q.queue) - n
+	} else {
+		queueCopy = make([]QueueItem, len(q.queue))
+		copy(queueCopy, q.queue)
+		remaining = 0
+	}
+
+	return queueCopy, remaining, nil
+}
+
 func (q *Queue) GetAll() ([]QueueItem, error) {
 	q.RLock()
 	defer q.RUnlock()
@@ -93,7 +117,11 @@ func (q *Queue) GetAll() ([]QueueItem, error) {
 	if len(q.queue) == 0 {
 		return nil, errors.New("Queue is empty")
 	}
-	return q.queue, nil
+
+	var queueCopy []QueueItem
+	copy(queueCopy, q.queue)
+
+	return queueCopy, nil
 }
 
 func (q *Queue) Move(from int, to int) error {
