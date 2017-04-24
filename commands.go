@@ -19,9 +19,6 @@ type CommandConstructor struct {
 type NameCommand map[string]*CommandConstructor
 type PermissionCommand map[string]*CommandConstructor
 
-//TODO use map?
-type CommandConstructors []*CommandConstructor
-
 var (
 	commands    NameCommand       = make(NameCommand)
 	permissions PermissionCommand = make(PermissionCommand)
