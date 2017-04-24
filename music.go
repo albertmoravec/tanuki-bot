@@ -93,8 +93,8 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 					stream := YoutubeItem{video, nil}
 
 					player.QueueChannel <- QueueItem{
-						Stream: stream,
-						Info: stream.GetInfo(),
+						Stream:      stream,
+						Info:        stream.GetInfo(),
 						RequestedBy: m.Author.Username,
 					}
 				} else {
@@ -143,8 +143,8 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 						stream := YoutubeItem{video, nil}
 
 						player.QueueChannel <- QueueItem{
-							Stream: stream,
-							Info:stream.GetInfo(),
+							Stream:      stream,
+							Info:        stream.GetInfo(),
 							RequestedBy: m.Author.Username,
 						}
 					}
@@ -301,12 +301,12 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 	}*/
 
 	info := CommandConstructor{
-		Names: []string{"info", "i"},
-		Permission: "info",
+		Names:             []string{"info", "i"},
+		Permission:        "info",
 		DefaultPermission: true,
-		NoArguments: false,
-		MinArguments: 0,
-		MaxArguments: 1,
+		NoArguments:       false,
+		MinArguments:      0,
+		MaxArguments:      1,
 		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
 			var id int = 0
 			if len(raw) > 0 {
@@ -328,17 +328,17 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 			embed := &discordgo.MessageEmbed{
 				Fields: []*discordgo.MessageEmbedField{
 					{
-						Name: "Title:",
+						Name:  "Title:",
 						Value: song.Info.Title,
 					},
 					{
-						Name:  "Requested by:",
-						Value: song.RequestedBy,
+						Name:   "Requested by:",
+						Value:  song.RequestedBy,
 						Inline: true,
 					},
 					{
-						Name:  "Length:",
-						Value: song.Info.Duration,
+						Name:   "Length:",
+						Value:  song.Info.Duration,
 						Inline: true,
 					},
 				},
@@ -417,7 +417,7 @@ func (player *Player) PlayStream(stream Playable) {
 	defer player.VoiceConnection.Speaking(false)
 
 	for player.VoiceConnection.Ready == false {
-		runtime.Gosched()	//should I put this before executing ffmpeg, will stdin buffer?
+		runtime.Gosched() //should I put this before executing ffmpeg, will stdin buffer?
 	}
 
 	go dgvoice.SendPCM(player.VoiceConnection, player.SendChannel)

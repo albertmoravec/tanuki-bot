@@ -23,20 +23,11 @@ type PermissionCommand map[string]*CommandConstructor
 type CommandConstructors []*CommandConstructor
 
 var (
-	commands    NameCommand
-	permissions PermissionCommand
+	commands    NameCommand       = make(NameCommand)
+	permissions PermissionCommand = make(PermissionCommand)
 )
 
 func (ccs CommandConstructors) Flatten() {
-	//TODO Init instead of this check
-	if commands == nil {
-		commands = make(NameCommand)
-	}
-
-	if permissions == nil {
-		permissions = make(PermissionCommand)
-	}
-
 	for _, c := range ccs {
 		for _, cname := range c.Names {
 			commands[cname] = c
