@@ -27,17 +27,13 @@ var (
 	permissions PermissionCommand = make(PermissionCommand)
 )
 
-func (ccs CommandConstructors) Flatten() {
-	for _, c := range ccs {
+func RegisterCommands(cmd ...*CommandConstructor) {
+	for _, c := range cmd {
 		for _, cname := range c.Names {
 			commands[cname] = c
 		}
 		permissions[c.Permission] = c
 	}
-}
-
-func RegisterCommands(cmd ...*CommandConstructor) {
-	CommandConstructors(cmd).Flatten()
 }
 
 func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *PermissionsManager) {
