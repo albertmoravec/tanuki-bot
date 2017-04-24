@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"reflect"
 	"sync"
 )
 
@@ -97,9 +96,9 @@ func (perm *PermissionsManager) Save() {
 }
 
 func (perm *PermissionsManager) Set(userID string, key string, value bool) error {
-	cmd := permissionsCommand.FindByPermission(key)
+	cmd := permissions[key]
 
-	if reflect.DeepEqual(cmd, CommandConstructor{}) {
+	if cmd == nil {
 		return errors.New("No such permission")
 	}
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/bwmarrin/discordgo"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -17,60 +16,37 @@ type CommandConstructor struct {
 	RunFunc           func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error
 }
 
-type Command struct {
-	Name    string
-	Command *CommandConstructor
-}
-
-type PermissionCommand struct {
-	PermissionName string
-	Command        *CommandConstructor
-}
+type NameCommand map[string]*CommandConstructor
+type PermissionCommand map[string]*CommandConstructor
 
 //TODO use map?
 type CommandConstructors []*CommandConstructor
-type Commands []Command
-type PermissionsCommand []PermissionCommand
 
 var (
-	commands           Commands
-	permissionsCommand PermissionsCommand
+	commands    NameCommand
+	permissions PermissionCommand
 )
 
-func (ccs CommandConstructors) Flatten() (cmds Commands, psc PermissionsCommand) {
+func (ccs CommandConstructors) Flatten() {
+	//TODO Init instead of this check
+	if commands == nil {
+		commands = make(NameCommand)
+	}
+
+	if permissions == nil {
+		permissions = make(PermissionCommand)
+	}
+
 	for _, c := range ccs {
 		for _, cname := range c.Names {
-			cmds = append(cmds, Command{Name: cname, Command: c})
+			commands[cname] = c
 		}
-		psc = append(psc, PermissionCommand{PermissionName: c.Permission, Command: c})
+		permissions[c.Permission] = c
 	}
-	return
-}
-
-func (cmds Commands) FindByName(name string) (cmd CommandConstructor) {
-	for _, c := range cmds {
-		if !strings.EqualFold(name, c.Name) {
-			continue
-		}
-		cmd = *c.Command
-	}
-	return
-}
-
-func (psc PermissionsCommand) FindByPermission(name string) (cmd CommandConstructor) {
-	for _, c := range psc {
-		if !strings.EqualFold(name, c.PermissionName) {
-			continue
-		}
-		cmd = *c.Command
-	}
-	return
 }
 
 func RegisterCommands(cmd ...*CommandConstructor) {
-	cmds, psc := CommandConstructors(cmd).Flatten()
-	commands = append(commands, cmds...)
-	permissionsCommand = append(permissionsCommand, psc...)
+	CommandConstructors(cmd).Flatten()
 }
 
 func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *PermissionsManager) {
@@ -91,9 +67,9 @@ func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *Perm
 		return
 	}
 
-	cmd := commands.FindByName(parsed[0])
+	cmd := commands[parsed[0]]
 
-	if reflect.DeepEqual(cmd, CommandConstructor{}) {
+	if cmd == nil {
 		s.ChannelMessageSend(m.ChannelID, "Command not found")
 		return
 	}
