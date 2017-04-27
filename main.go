@@ -52,7 +52,7 @@ func main() {
 		return
 	}
 
-	InitPlayer(d, Config.Guild, Config.VoiceChannel, Config.YoutubeAPIKey)
+	InitPlayer(d, Config.Guild, Config.YoutubeAPIKey)
 
 	log.Println("Up and running!")
 

@@ -18,7 +18,7 @@ type YoutubeItem struct {
 	ytdlCmd *exec.Cmd
 }
 
-func (yt YoutubeItem) Play() io.Reader {
+func (yt *YoutubeItem) Play() io.Reader {
 	//TODO YTDL returning early
 	/*reader, writer := io.Pipe()
 	format := yt.Video.Formats.Extremes(ytdl.FormatAudioBitrateKey, true)[0]
@@ -59,11 +59,13 @@ func (yt YoutubeItem) Play() io.Reader {
 	//return io.Reader(bufio.NewReaderSize(reader, 65536))
 }
 
-func (yt YoutubeItem) Stop() {
-	yt.ytdlCmd.Process.Kill()
+func (yt *YoutubeItem) Stop() {
+	if yt.ytdlCmd.Process != nil {
+		yt.ytdlCmd.Process.Kill()
+	}
 }
 
-func (yt YoutubeItem) GetInfo() ItemInfo {
+func (yt *YoutubeItem) GetInfo() ItemInfo {
 	return ItemInfo{
 		Title:    yt.Video.Title,
 		Duration: yt.Video.Duration.String(),

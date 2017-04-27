@@ -32,8 +32,7 @@ type Player struct {
 	FFmpeg          *exec.Cmd
 	SendChannel     chan []int16
 	DgoSession      *discordgo.Session
-
-	ClientConfig *jwt.Config
+	ClientConfig    *jwt.Config
 }
 
 const (
@@ -42,26 +41,24 @@ const (
 	frameSize int = 960   // uint16 size of each audio frame
 )
 
-func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath string) {
-	voiceConn, err := s.ChannelVoiceJoin(gID, vID, false, false)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+var (
+	ErrPlayerConnected    error = errors.New("Player is already connected, use !stop")
+	ErrPlayerNotConnected error = errors.New("Player is not connected, use !join")
+)
 
+func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 	player := Player{
-		IsPlaying:       false,
-		Queue:           Queue{},
-		SongChannel:     make(chan QueueItem),
-		QueueChannel:    make(chan QueueItem),
-		NextChannel:     make(chan bool),
-		StopChannel:     make(chan bool),
-		SendChannel:     make(chan []int16, 2),
-		VoiceConnection: voiceConn,
-		DgoSession:      s,
+		Queue:        Queue{},
+		SongChannel:  make(chan QueueItem),
+		QueueChannel: make(chan QueueItem),
+		NextChannel:  make(chan bool),
+		StopChannel:  make(chan bool),
+		SendChannel:  make(chan []int16, 2),
+		DgoSession:   s,
 	}
 
 	if ytApiKeyPath != "" {
+		var err error
 		player.ClientConfig, err = LoadYoutubeAPIConfig(ytApiKeyPath)
 		if err != nil {
 			log.Println(err)
@@ -79,6 +76,9 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		MinArguments:      1,
 		MaxArguments:      -1,
 		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			if player.VoiceConnection == nil {
+				return ErrPlayerNotConnected
+			}
 			youtubeRegexp := regexp.MustCompile(`youtu(?:be\.com/(?:v/|e(?:mbed)?/|watch\?v=)|\.be/)([\w-]{11}\b)`)
 
 			for _, link := range raw {
@@ -93,7 +93,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 					stream := YoutubeItem{video, nil}
 
 					player.QueueChannel <- QueueItem{
-						Stream:      stream,
+						Stream:      &stream,
 						Info:        stream.GetInfo(),
 						RequestedBy: m.Author.Username,
 					}
@@ -113,6 +113,10 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		MinArguments:      1,
 		MaxArguments:      -1,
 		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			if player.VoiceConnection == nil {
+				return ErrPlayerNotConnected
+			}
+
 			if player.ClientConfig == nil {
 				return errors.New("No Youtube API key provided")
 			}
@@ -143,7 +147,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 						stream := YoutubeItem{video, nil}
 
 						player.QueueChannel <- QueueItem{
-							Stream:      stream,
+							Stream:      &stream,
 							Info:        stream.GetInfo(),
 							RequestedBy: m.Author.Username,
 						}
@@ -163,9 +167,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		MinArguments:      0,
 		MaxArguments:      -1,
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-
 			if player.IsPlaying {
-				log.Println("Requesting skip")
 				player.StopChannel <- true
 			}
 			return nil
@@ -180,9 +182,11 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		MinArguments:      0,
 		MaxArguments:      -1,
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-			player.Stop()
+			if player.VoiceConnection == nil {
+				return ErrPlayerNotConnected
+			}
 
-			return nil
+			return player.Stop()
 		},
 	}
 
@@ -272,7 +276,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 	}
 
 	//TODO implement proper join (join more channels maybe? would probably require dca)
-	/*join := CommandConstructor{
+	join := CommandConstructor{
 		Names:             []string{"join", "j"},
 		Permission:        "join",
 		DefaultPermission: true,
@@ -280,6 +284,10 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		MinArguments:      0,
 		MaxArguments:      -1,
 		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			if player.VoiceConnection != nil {
+				return ErrPlayerConnected
+			}
+
 			msgChannel, err := s.Channel(m.ChannelID)
 			if err != nil {
 				return err
@@ -292,13 +300,17 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 
 			for _, vState := range msgGuild.VoiceStates {
 				if vState.UserID == m.Author.ID {
-					//InitPlayer(s, vState.GuildID, vState.ChannelID)
+					var err error
+					player.VoiceConnection, err = s.ChannelVoiceJoin(gID, vState.ChannelID, false, false)
+					if err != nil {
+						return err
+					}
 				}
 			}
 
 			return nil
 		},
-	}*/
+	}
 
 	info := CommandConstructor{
 		Names:             []string{"info", "i"},
@@ -350,9 +362,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 		},
 	}
 
-	//TODO info: show info about currently playing song and song with entered id
-
-	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info /*, &join*/)
+	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join)
 
 	go func() {
 		for {
@@ -380,6 +390,7 @@ func InitPlayer(s *discordgo.Session, gID string, vID string, ytApiKeyPath strin
 	go func() {
 		for {
 			song := <-player.SongChannel
+
 			player.DgoSession.UpdateStatus(0, song.Info.Title)
 			player.DgoSession.ChannelTopicEdit(Config.TextChannel, "Playing: "+song.Info.Title)
 
@@ -429,8 +440,7 @@ func (player *Player) PlayStream(stream Playable) {
 	for {
 		select {
 		case <-player.StopChannel:
-			log.Println("Skip received")
-			//stream.Stop() //TODO make the stream source cancelable (context maybe?)
+			stream.Stop()
 			player.FFmpeg.Process.Kill()
 			return
 		default:
@@ -449,16 +459,27 @@ func (player *Player) PlayStream(stream Playable) {
 	}
 }
 
-func (player *Player) Stop() {
+// Beware, stop seems still quite buggy
+func (player *Player) Stop() error {
 	player.Queue.Purge()
 
 	if player.IsPlaying {
 		player.StopChannel <- true
 	}
 
-	//wait before implementing join
-	/*err := player.VoiceConnection.Disconnect()
-	if err != nil {
-		log.Println(err)
-	}*/
+	if player.VoiceConnection != nil {
+		// wait for the player to stop sending data
+		for player.IsPlaying {
+			runtime.Gosched()
+		}
+
+		err := player.VoiceConnection.Disconnect()
+		if err != nil {
+			return err
+		}
+	}
+
+	player.VoiceConnection = nil
+
+	return nil
 }
