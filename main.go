@@ -59,6 +59,10 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c
+
+	for _, vc := range d.VoiceConnections {
+		vc.Disconnect()
+	}
 }
 
 func handleCommand(perm *PermissionsManager) func(s *discordgo.Session, m *discordgo.MessageCreate) {
