@@ -22,7 +22,7 @@ type Player struct {
 	QueueChannel    chan QueueItem
 	SongChannel     chan QueueItem
 	NextChannel     chan bool
-	PauseChannel	chan bool
+	PauseChannel    chan bool
 	StopChannel     chan bool
 	VoiceConnection *discordgo.VoiceConnection
 	Streamer        *dca.StreamingSession
@@ -354,16 +354,16 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 	}
 
 	pause := CommandConstructor{
-		Names: []string{"pause"},
-		Permission: "pause",
+		Names:             []string{"pause"},
+		Permission:        "pause",
 		DefaultPermission: true,
-		NoArguments: true,
-		MinArguments: 0,
-		MaxArguments: -1,
+		NoArguments:       true,
+		MinArguments:      0,
+		MaxArguments:      -1,
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-				if player.IsPlaying {
-					player.PauseChannel <- true
-				}
+			if player.IsPlaying {
+				player.PauseChannel <- true
+			}
 			return nil
 		},
 	}
@@ -443,7 +443,7 @@ func (player *Player) PlayStream(stream Playable) {
 			} else {
 				player.Streamer.SetPaused(true)
 			}
-		case err := <- done:
+		case err := <-done:
 			if err != nil {
 				log.Println(err)
 			}
@@ -460,20 +460,20 @@ func (player *Player) Stop() error {
 		player.StopChannel <- true
 	}
 
-	if player.VoiceConnection != nil {
+	if player.VoiceConnection != nil && player.Streamer != nil {
 		// wait for the player to stop, not sure if this is necessary?
 		for {
-			if ok, _ := player.Streamer.Finished(); !ok {
+			if ok, _ := player.Streamer.Finished(); !ok { //Streamer not finished, do something else...
 				runtime.Gosched()
-			} else {
+			} else { //Streamer finished, disconnect...
 				break
 			}
 		}
+	}
 
-		err := player.VoiceConnection.Disconnect()
-		if err != nil {
-			return err
-		}
+	err := player.VoiceConnection.Disconnect()
+	if err != nil {
+		return err
 	}
 
 	player.VoiceConnection = nil
