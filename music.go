@@ -1,24 +1,20 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/bwmarrin/dgvoice"
 	"github.com/bwmarrin/discordgo"
 	"github.com/rylio/ytdl"
 	"golang.org/x/oauth2/jwt"
 	"google.golang.org/api/youtube/v3"
-	"io"
 	"log"
-	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"github.com/jonas747/dca"
 )
 
 type Player struct {
@@ -38,7 +34,6 @@ type Player struct {
 const (
 	channels  int = 2     // 1 for mono, 2 for stereo
 	frameRate int = 48000 // audio sampling rate
-	frameSize int = 960   // uint16 size of each audio frame
 )
 
 var (
@@ -405,61 +400,48 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 }
 
 func (player *Player) PlayStream(stream Playable) {
-	player.FFmpeg = exec.Command("ffmpeg", "-hide_banner", "-loglevel", "fatal", "-i", "pipe:0", "-af", "dynaudnorm", "-f", "s16le", "-ar", strconv.Itoa(frameRate), "-ac", strconv.Itoa(channels), "pipe:1")
-	player.FFmpeg.Stdin = stream.Play()
-	player.FFmpeg.Stderr = os.Stderr
-	ffmpegOut, err := player.FFmpeg.StdoutPipe()
+	options := dca.EncodeOptions{
+		Volume: 256,
+		Channels: channels,
+		FrameRate: frameRate,
+		FrameDuration: 20,
+		Bitrate: 128,
+		PacketLoss: 5,
+		RawOutput: true,
+		Application: dca.AudioApplicationAudio,
+		CompressionLevel: 8,
+		BufferedFrames: 100,
+		VBR: false,
+	}
+	encoder, err := dca.EncodeMem(stream.Play(), &options)
+	defer encoder.Cleanup()
 	if err != nil {
-		fmt.Println("FFmpeg StdoutPipe Error:", err)
+		log.Println(err)
 		return
 	}
-	ffmpegBuffer := bufio.NewReaderSize(ffmpegOut, 65536)
-
-	err = player.FFmpeg.Start()
-	if err != nil {
-		fmt.Println("FFmpeg RunStart Error:", err)
-		return
-	}
-	defer func() {
-		go player.FFmpeg.Wait()
-	}()
 
 	player.VoiceConnection.Speaking(true)
 	defer player.VoiceConnection.Speaking(false)
 
 	for player.VoiceConnection.Ready == false {
-		runtime.Gosched() //should I put this before executing ffmpeg, will stdin buffer?
+		runtime.Gosched()
 	}
-
-	go dgvoice.SendPCM(player.VoiceConnection, player.SendChannel)
-
-	audiobuf := make([]int16, frameSize*channels)
 
 	player.IsPlaying = true
 	defer func() { player.IsPlaying = false }()
-	for {
-		select {
-		case <-player.StopChannel:
-			stream.Stop()
-			player.FFmpeg.Process.Kill()
-			return
-		default:
-			err = binary.Read(ffmpegBuffer, binary.LittleEndian, &audiobuf)
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				fmt.Println("Stream end")
-				return
-			}
-			if err != nil {
-				fmt.Println("Error reading from FFmpeg stdout:", err)
-				return
-			}
 
-			player.SendChannel <- audiobuf
-		}
+	done := make(chan error)
+	dca.NewStream(encoder, player.VoiceConnection, done)
+
+	select {
+	case <-player.StopChannel:
+		stream.Stop()
+		encoder.Stop()
+		return
+	//TODO pause
 	}
 }
 
-// Beware, stop seems still quite buggy
 func (player *Player) Stop() error {
 	player.Queue.Purge()
 
