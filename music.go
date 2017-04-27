@@ -5,16 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"github.com/jonas747/dca"
 	"github.com/rylio/ytdl"
 	"golang.org/x/oauth2/jwt"
 	"google.golang.org/api/youtube/v3"
 	"log"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
-	"github.com/jonas747/dca"
 )
 
 type Player struct {
@@ -23,18 +22,14 @@ type Player struct {
 	QueueChannel    chan QueueItem
 	SongChannel     chan QueueItem
 	NextChannel     chan bool
+	PauseChannel	chan bool
 	StopChannel     chan bool
 	VoiceConnection *discordgo.VoiceConnection
-	FFmpeg          *exec.Cmd
+	Streamer        *dca.StreamingSession
 	SendChannel     chan []int16
 	DgoSession      *discordgo.Session
 	ClientConfig    *jwt.Config
 }
-
-const (
-	channels  int = 2     // 1 for mono, 2 for stereo
-	frameRate int = 48000 // audio sampling rate
-)
 
 var (
 	ErrPlayerConnected    error = errors.New("Player is already connected, use !stop")
@@ -47,6 +42,7 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 		SongChannel:  make(chan QueueItem),
 		QueueChannel: make(chan QueueItem),
 		NextChannel:  make(chan bool),
+		PauseChannel: make(chan bool),
 		StopChannel:  make(chan bool),
 		SendChannel:  make(chan []int16, 2),
 		DgoSession:   s,
@@ -298,7 +294,7 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 					var err error
 					player.VoiceConnection, err = s.ChannelVoiceJoin(gID, vState.ChannelID, false, false)
 					if err != nil {
-						return err
+						log.Println(err)
 					}
 				}
 			}
@@ -357,7 +353,22 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 		},
 	}
 
-	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join)
+	pause := CommandConstructor{
+		Names: []string{"pause"},
+		Permission: "pause",
+		DefaultPermission: true,
+		NoArguments: true,
+		MinArguments: 0,
+		MaxArguments: -1,
+		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+				if player.IsPlaying {
+					player.PauseChannel <- true
+				}
+			return nil
+		},
+	}
+
+	RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join, &pause)
 
 	go func() {
 		for {
@@ -400,20 +411,7 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 }
 
 func (player *Player) PlayStream(stream Playable) {
-	options := dca.EncodeOptions{
-		Volume: 256,
-		Channels: channels,
-		FrameRate: frameRate,
-		FrameDuration: 20,
-		Bitrate: 128,
-		PacketLoss: 5,
-		RawOutput: true,
-		Application: dca.AudioApplicationAudio,
-		CompressionLevel: 8,
-		BufferedFrames: 100,
-		VBR: false,
-	}
-	encoder, err := dca.EncodeMem(stream.Play(), &options)
+	encoder, err := dca.EncodeMem(stream.Play(), dca.StdEncodeOptions)
 	defer encoder.Cleanup()
 	if err != nil {
 		log.Println(err)
@@ -427,19 +425,32 @@ func (player *Player) PlayStream(stream Playable) {
 		runtime.Gosched()
 	}
 
+	done := make(chan error)
+	player.Streamer = dca.NewStream(encoder, player.VoiceConnection, done)
+
 	player.IsPlaying = true
 	defer func() { player.IsPlaying = false }()
 
-	done := make(chan error)
-	dca.NewStream(encoder, player.VoiceConnection, done)
-
-	select {
-	case <-player.StopChannel:
-		stream.Stop()
-		encoder.Stop()
-		return
-	//TODO pause
+	for {
+		select {
+		case <-player.StopChannel:
+			stream.Stop()
+			encoder.Stop()
+			return
+		case <-player.PauseChannel:
+			if player.Streamer.Paused() {
+				player.Streamer.SetPaused(false)
+			} else {
+				player.Streamer.SetPaused(true)
+			}
+		case err := <- done:
+			if err != nil {
+				log.Println(err)
+			}
+			return
+		}
 	}
+
 }
 
 func (player *Player) Stop() error {
@@ -450,9 +461,13 @@ func (player *Player) Stop() error {
 	}
 
 	if player.VoiceConnection != nil {
-		// wait for the player to stop sending data
-		for player.IsPlaying {
-			runtime.Gosched()
+		// wait for the player to stop, not sure if this is necessary?
+		for {
+			if ok, _ := player.Streamer.Finished(); !ok {
+				runtime.Gosched()
+			} else {
+				break
+			}
 		}
 
 		err := player.VoiceConnection.Disconnect()
