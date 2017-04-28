@@ -39,7 +39,7 @@ var (
 func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 	player := Player{
 		Queue:        Queue{},
-		SongChannel:  make(chan QueueItem),
+		SongChannel:  make(chan QueueItem, 1),
 		QueueChannel: make(chan QueueItem),
 		NextChannel:  make(chan bool),
 		PauseChannel: make(chan bool),
@@ -83,11 +83,11 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 
 					stream := YoutubeItem{video, nil}
 
-					player.QueueChannel <- QueueItem{
+					player.Add(QueueItem{
 						Stream:      &stream,
 						Info:        stream.GetInfo(),
 						RequestedBy: m.Author.Username,
-					}
+					})
 				} else {
 					s.ChannelMessageSend(m.ChannelID, "No video matched")
 				}
@@ -137,11 +137,11 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 
 						stream := YoutubeItem{video, nil}
 
-						player.QueueChannel <- QueueItem{
+						player.Add(QueueItem{
 							Stream:      &stream,
 							Info:        stream.GetInfo(),
 							RequestedBy: m.Author.Username,
-						}
+						})
 					}
 				}
 			}
@@ -372,40 +372,25 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 
 	go func() {
 		for {
-			select {
-			case item := <-player.QueueChannel:
-				player.Queue.Add(item)
-
-				if !player.IsPlaying {
-					song, err := player.Queue.GetFirst()
-					if err == nil {
-						player.SongChannel <- song
-					}
-				}
-
-			case <-player.NextChannel:
-				player.Queue.Remove(0)
-				song, err := player.Queue.GetFirst()
-				if err == nil {
-					player.SongChannel <- song
-				}
-			}
-		}
-	}()
-
-	go func() {
-		for {
 			song := <-player.SongChannel
+			player.IsPlaying = true
 
 			player.DgoSession.UpdateStatus(0, song.Info.Title)
 			player.DgoSession.ChannelTopicEdit(Config.TextChannel, "Playing: "+song.Info.Title)
+
 
 			player.PlayStream(song.Stream)
 
 			player.DgoSession.UpdateStatus(0, "")
 			player.DgoSession.ChannelTopicEdit(Config.TextChannel, "")
 
-			player.NextChannel <- true
+			player.Queue.Remove(0)
+			song, err := player.Queue.GetFirst()
+			if err == nil {
+				player.SongChannel <- song
+			}
+
+			player.IsPlaying = false
 		}
 	}()
 }
@@ -427,9 +412,6 @@ func (player *Player) PlayStream(stream Playable) {
 
 	done := make(chan error)
 	player.Streamer = dca.NewStream(encoder, player.VoiceConnection, done)
-
-	player.IsPlaying = true
-	defer func() { player.IsPlaying = false }()
 
 	for {
 		select {
@@ -479,4 +461,15 @@ func (player *Player) Stop() error {
 	player.VoiceConnection = nil
 
 	return nil
+}
+
+func (player *Player) Add(item QueueItem) {
+	player.Queue.Add(item)
+
+	if !player.IsPlaying {
+		song, err := player.Queue.GetFirst()
+		if err == nil {
+			player.SongChannel <- song
+		}
+	}
 }
