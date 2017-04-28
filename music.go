@@ -19,7 +19,6 @@ import (
 type Player struct {
 	IsPlaying       bool
 	Queue           Queue
-	QueueChannel    chan QueueItem
 	SongChannel     chan QueueItem
 	NextChannel     chan bool
 	PauseChannel    chan bool
@@ -40,7 +39,6 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 	player := Player{
 		Queue:        Queue{},
 		SongChannel:  make(chan QueueItem, 1),
-		QueueChannel: make(chan QueueItem),
 		NextChannel:  make(chan bool),
 		PauseChannel: make(chan bool),
 		StopChannel:  make(chan bool),
@@ -158,9 +156,7 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 		MinArguments:      0,
 		MaxArguments:      -1,
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-			if player.IsPlaying {
-				player.StopChannel <- true
-			}
+			player.Skip()
 			return nil
 		},
 	}
@@ -361,9 +357,7 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 		MinArguments:      0,
 		MaxArguments:      -1,
 		RunFunc: func(_ []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
-			if player.IsPlaying {
-				player.PauseChannel <- true
-			}
+			player.Pause()
 			return nil
 		},
 	}
@@ -377,7 +371,6 @@ func InitPlayer(s *discordgo.Session, gID string, ytApiKeyPath string) {
 
 			player.DgoSession.UpdateStatus(0, song.Info.Title)
 			player.DgoSession.ChannelTopicEdit(Config.TextChannel, "Playing: "+song.Info.Title)
-
 
 			player.PlayStream(song.Stream)
 
@@ -413,6 +406,7 @@ func (player *Player) PlayStream(stream Playable) {
 	done := make(chan error)
 	player.Streamer = dca.NewStream(encoder, player.VoiceConnection, done)
 
+	//wait for commands
 	for {
 		select {
 		case <-player.StopChannel:
@@ -473,3 +467,16 @@ func (player *Player) Add(item QueueItem) {
 		}
 	}
 }
+
+func (player *Player) Skip() {
+	if player.IsPlaying {
+		player.StopChannel <- true
+	}
+}
+
+func (player *Player) Pause() {
+	if player.IsPlaying {
+		player.PauseChannel <- true
+	}
+}
+
