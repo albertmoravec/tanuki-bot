@@ -102,7 +102,6 @@ func (cmds *Commands) InitPlayer() {
 					err := RetrievePlaylist(service, id[1], m.Author.Username, items)
 					if err != nil {
 						log.Println(err)
-						close(items)
 						continue
 					}
 

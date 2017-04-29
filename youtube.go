@@ -97,6 +97,8 @@ func CreateQueueItem(url, requested string) (*QueueItem, error) {
 }
 
 func RetrievePlaylist(service *youtube.Service, url string, requested string, items chan *QueueItem) error {
+	defer close(items)
+
 	playlistItems, err := service.PlaylistItems.List("snippet").PlaylistId(url).MaxResults(50).Do()
 	if err != nil {
 		return err
