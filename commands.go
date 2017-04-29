@@ -24,6 +24,13 @@ type Commands struct {
 	ByPermission PermissionCommand
 }
 
+func CreateCommands() *Commands {
+	return &Commands{
+		ByName:       NameCommand{},
+		ByPermission: PermissionCommand{},
+	}
+}
+
 func (cmds *Commands) RegisterCommands(cmd ...*CommandConstructor) {
 	for _, c := range cmd {
 		for _, cmdName := range c.Names {

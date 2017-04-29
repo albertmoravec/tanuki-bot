@@ -11,7 +11,7 @@ import (
 type Bot struct {
 	Config         *Configuration
 	Permissions    *PermissionsManager
-	Commands       Commands
+	Commands       *Commands
 	Player         *Player
 	DiscordSession *discordgo.Session
 }
@@ -40,8 +40,7 @@ func (bot *Bot) Init() {
 		return
 	}
 
-	bot.Commands.ByPermission = make(PermissionCommand)
-	bot.Commands.ByName = make(NameCommand)
+	bot.Commands = CreateCommands()
 
 	bot.Permissions = bot.Commands.InitPermissions("permissions.json")
 	bot.Commands.InitPlayer()
