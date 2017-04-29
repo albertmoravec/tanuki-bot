@@ -97,14 +97,18 @@ func (cmds *Commands) InitPlayer() {
 				id := listRegexp.FindStringSubmatch(link)
 
 				if len(id) > 0 {
-					//TODO retrieve items concurrently?
-					items, err := RetrievePlaylist(service, id[1], m.Author.Username)
+					items := make(chan *QueueItem)
+
+					err := RetrievePlaylist(service, id[1], m.Author.Username, items)
 					if err != nil {
 						log.Println(err)
+						close(items)
 						continue
 					}
 
-					bot.Player.Add(items...)
+					for item := range items {
+						bot.Player.Add(item)
+					}
 				}
 			}
 

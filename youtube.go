@@ -96,23 +96,27 @@ func CreateQueueItem(url, requested string) (*QueueItem, error) {
 	}, nil
 }
 
-func RetrievePlaylist(service *youtube.Service, url string, requested string) (items []*QueueItem, err error) {
+func RetrievePlaylist(service *youtube.Service, url string, requested string, items chan *QueueItem) error {
 	playlistItems, err := service.PlaylistItems.List("snippet").PlaylistId(url).MaxResults(50).Do()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	for _, video := range playlistItems.Items {
-		video, err := CreateQueueItem(video.Snippet.ResourceId.VideoId, requested)
-		if err != nil {
-			log.Println(err)
-			continue
+	go func() {
+		for _, video := range playlistItems.Items {
+			video, err := CreateQueueItem(video.Snippet.ResourceId.VideoId, requested)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			items <- video
 		}
 
-		items = append(items, video)
-	}
+		close(items)
+	}()
 
-	return items, nil
+	return nil
 }
 
 func LoadYoutubeAPIConfig(filePath string) (*jwt.Config, error) {
