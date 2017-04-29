@@ -40,7 +40,10 @@ func (yt *YoutubeItem) Play() io.Reader {
 			log.Println("error: " + err.Error())
 		}
 		log.Println("Download returned")
-	}()*/
+	}()
+
+	return io.Reader(bufio.NewReaderSize(reader, 65536))
+	*/
 
 	yt.ytdlCmd = exec.Command("ytdl", "-s", "-f", "best-audio", "-o", "-", yt.Video.ID)
 	yt.ytdlCmd.Stderr = os.Stderr
@@ -56,8 +59,6 @@ func (yt *YoutubeItem) Play() io.Reader {
 		return nil
 	}
 	return bufio.NewReaderSize(youtubedlOut, 65536)
-
-	//return io.Reader(bufio.NewReaderSize(reader, 65536))
 }
 
 func (yt *YoutubeItem) Stop() {
