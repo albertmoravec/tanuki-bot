@@ -20,7 +20,7 @@ type PermissionsManager struct {
 	permissions Permissions
 }
 
-func InitPermissions(filePath string) *PermissionsManager {
+func (cmds *Commands) InitPermissions(filePath string) *PermissionsManager {
 	pm := PermissionsManager{
 		filepath:    filePath,
 		permissions: make(Permissions),
@@ -44,7 +44,7 @@ func InitPermissions(filePath string) *PermissionsManager {
 		NoArguments:       false,
 		MinArguments:      3,
 		MaxArguments:      3,
-		RunFunc: func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+		RunFunc: func(bot *Bot, raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
 			if len(m.Mentions) == 0 {
 				return errors.New("No user specified")
 			}
@@ -53,14 +53,19 @@ func InitPermissions(filePath string) *PermissionsManager {
 				return errors.New("Invalid permission value")
 			}
 
-			pm.Set(m.Mentions[0].ID, raw[1], raw[2] == "true")
+			cmd := bot.Commands.ByPermission[raw[1]]
+			if cmd == nil {
+				return errors.New("No such permission")
+			}
+
+			pm.Set(m.Mentions[0].ID, raw[1], raw[2] == "true", cmd.DefaultPermission)
 
 			s.ChannelMessageSend(m.ChannelID, "Permission set!")
 			return nil
 		},
 	}
 
-	RegisterCommands(&setperm)
+	cmds.RegisterCommands(&setperm)
 
 	return &pm
 }
@@ -95,13 +100,7 @@ func (perm *PermissionsManager) Save() {
 	f.Close()
 }
 
-func (perm *PermissionsManager) Set(userID string, key string, value bool) error {
-	cmd := permissions[key]
-
-	if cmd == nil {
-		return errors.New("No such permission")
-	}
-
+func (perm *PermissionsManager) Set(userID string, key string, value bool, commandDefault bool) error {
 	perm.Lock()
 	defer perm.Unlock()
 
@@ -109,7 +108,7 @@ func (perm *PermissionsManager) Set(userID string, key string, value bool) error
 		perm.permissions[userID] = make(UserPermissions)
 	}
 
-	if cmd.DefaultPermission {
+	if commandDefault {
 		perm.permissions[userID][key] = !value
 	} else {
 		perm.permissions[userID][key] = value

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/api/youtube/v3"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 )
@@ -70,6 +71,47 @@ func (yt *YoutubeItem) GetInfo() ItemInfo {
 		Title:    yt.Video.Title,
 		Duration: yt.Video.Duration.String(),
 	}
+}
+
+func CreateYoutubeItem(url string) (*YoutubeItem, error) {
+	video, err := ytdl.GetVideoInfo(url)
+	if err != nil {
+		return nil, err
+	}
+
+	return &YoutubeItem{video, nil}, nil
+}
+
+func CreateQueueItem(url, requested string) (*QueueItem, error) {
+	video, err := CreateYoutubeItem(url)
+	if err != nil {
+		return nil, err
+	}
+
+	return &QueueItem{
+		Stream:      video,
+		Info:        video.GetInfo(),
+		RequestedBy: requested,
+	}, nil
+}
+
+func RetrievePlaylist(service *youtube.Service, url string, requested string) (items []*QueueItem, err error) {
+	playlistItems, err := service.PlaylistItems.List("snippet").PlaylistId(url).MaxResults(50).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, video := range playlistItems.Items {
+		video, err := CreateQueueItem(video.Snippet.ResourceId.VideoId, requested)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		items = append(items, video)
+	}
+
+	return items, nil
 }
 
 func LoadYoutubeAPIConfig(filePath string) (*jwt.Config, error) {

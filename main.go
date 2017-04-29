@@ -8,51 +8,61 @@ import (
 	"os/signal"
 )
 
+type Bot struct {
+	Config         *Configuration
+	Permissions    *PermissionsManager
+	Commands       Commands
+	Player         *Player
+	DiscordSession *discordgo.Session
+}
+
 var (
-	Config config
+	Tanuki Bot
 )
 
 func init() {
-	Config = config{}
+	Tanuki.Config = &Configuration{}
 
 	//configPath := flag.String("c", "config.yml", "Config file path") // allow using -c flag, flags will override config file
-	Config.Load("config.yml")
+	Tanuki.Config.Load("config.yml")
 
-	flag.StringVar(&Config.Token, "a", Config.Token, "Auth token")
-	flag.StringVar(&Config.Guild, "g", Config.Guild, "Guild ID")
-	flag.StringVar(&Config.TextChannel, "t", Config.TextChannel, "Text channel ID")
-	flag.StringVar(&Config.VoiceChannel, "v", Config.VoiceChannel, "Voice channel ID")
-	flag.StringVar(&Config.Owner, "o", Config.Owner, "Owner ID")
-	flag.StringVar(&Config.YoutubeAPIKey, "y", Config.YoutubeAPIKey, "Youtube API key")
-
-	flag.StringVar(&Config.FFmpegPath, "ffmpeg", Config.FFmpegPath, "FFmpeg executable path")
+	flag.StringVar(&Tanuki.Config.Token, "a", Tanuki.Config.Token, "Auth token")
+	flag.StringVar(&Tanuki.Config.Guild, "g", Tanuki.Config.Guild, "Guild ID")
+	flag.StringVar(&Tanuki.Config.TextChannel, "t", Tanuki.Config.TextChannel, "Text channel ID")
+	flag.StringVar(&Tanuki.Config.Owner, "o", Tanuki.Config.Owner, "Owner ID")
+	flag.StringVar(&Tanuki.Config.YoutubeAPIKey, "y", Tanuki.Config.YoutubeAPIKey, "Youtube API key")
 	flag.Parse()
 }
 
-func main() {
-	if !Config.Validate() {
+func (bot *Bot) Init() {
+	if !bot.Config.Validate() {
 		log.Fatal("Invalid configuration")
 		return
 	}
 
-	perm := InitPermissions("permissions.json")
+	bot.Commands.ByPermission = make(PermissionCommand)
+	bot.Commands.ByName = make(NameCommand)
 
-	d, err := discordgo.New(Config.Token)
+	bot.Permissions = bot.Commands.InitPermissions("permissions.json")
+	bot.Commands.InitPlayer()
+
+	var err error
+	bot.DiscordSession, err = discordgo.New(bot.Config.Token)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
-	d.AddHandler(handleCommand(perm))
-	//d.LogLevel = discordgo.LogDebug
-
-	err = d.Open()
+	bot.DiscordSession.AddHandler(bot.ProcessCommand)
+	err = bot.DiscordSession.Open()
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
+}
 
-	InitPlayer(d, Config.Guild, Config.YoutubeAPIKey)
+func main() {
+	Tanuki.Init()
 
 	log.Println("Up and running!")
 
@@ -60,13 +70,5 @@ func main() {
 	signal.Notify(c, os.Interrupt)
 	<-c
 
-	for _, vc := range d.VoiceConnections {
-		vc.Disconnect()
-	}
-}
-
-func handleCommand(perm *PermissionsManager) func(s *discordgo.Session, m *discordgo.MessageCreate) {
-	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		ProcessCommand(s, m, perm)
-	}
+	Tanuki.DiscordSession.Close()
 }

@@ -13,27 +13,27 @@ type CommandConstructor struct {
 	NoArguments       bool
 	MinArguments      int
 	MaxArguments      int
-	RunFunc           func(raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error
+	RunFunc           func(bot *Bot, raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error
 }
 
 type NameCommand map[string]*CommandConstructor
 type PermissionCommand map[string]*CommandConstructor
 
-var (
-	commands    NameCommand       = make(NameCommand)
-	permissions PermissionCommand = make(PermissionCommand)
-)
+type Commands struct {
+	ByName       NameCommand
+	ByPermission PermissionCommand
+}
 
-func RegisterCommands(cmd ...*CommandConstructor) {
+func (cmds *Commands) RegisterCommands(cmd ...*CommandConstructor) {
 	for _, c := range cmd {
-		for _, cname := range c.Names {
-			commands[cname] = c
+		for _, cmdName := range c.Names {
+			cmds.ByName[cmdName] = c
 		}
-		permissions[c.Permission] = c
+		cmds.ByPermission[c.Permission] = c
 	}
 }
 
-func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *PermissionsManager) {
+func (bot *Bot) ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var err error
 
 	channel, err := s.Channel(m.ChannelID)
@@ -41,7 +41,7 @@ func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *Perm
 		return
 	}
 
-	if m.ChannelID != Config.TextChannel && !channel.IsPrivate {
+	if m.ChannelID != bot.Config.TextChannel && !channel.IsPrivate {
 		return
 	}
 
@@ -51,7 +51,7 @@ func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *Perm
 		return
 	}
 
-	cmd := commands[parsed[0]]
+	cmd := bot.Commands.ByName[parsed[0]]
 
 	if cmd == nil {
 		s.ChannelMessageSend(m.ChannelID, "Command not found")
@@ -68,15 +68,15 @@ func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *Perm
 		return
 	}
 
-	if !perm.Get(m.Author.ID, cmd.Permission, cmd.DefaultPermission) && m.Author.ID != Config.Owner {
+	if !bot.Permissions.Get(m.Author.ID, cmd.Permission, cmd.DefaultPermission) && m.Author.ID != bot.Config.Owner {
 		s.ChannelMessageSend(m.ChannelID, "Permission denied!")
 		return
 	}
 
 	if cmd.NoArguments {
-		err = cmd.RunFunc(nil, m, s)
+		err = cmd.RunFunc(bot, nil, m, s)
 	} else {
-		err = cmd.RunFunc(parsed[1:], m, s)
+		err = cmd.RunFunc(bot, parsed[1:], m, s)
 	}
 
 	if err != nil {
@@ -85,6 +85,6 @@ func ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate, perm *Perm
 
 	go func() {
 		time.Sleep(5 * time.Second)
-		s.ChannelMessageDelete(Config.TextChannel, m.ID)
+		s.ChannelMessageDelete(bot.Config.TextChannel, m.ID)
 	}()
 }

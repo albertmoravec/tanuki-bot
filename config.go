@@ -5,30 +5,26 @@ import (
 	"io/ioutil"
 )
 
-type config struct {
+type Configuration struct {
 	//Discord settings
-	Token        string `yaml:"token"`        // required, with Bot prefix
-	Guild        string `yaml:"guild"`        // required
-	TextChannel  string `yaml:"textChannel"`  // required, will listen to commands in this channel
-	VoiceChannel string `yaml:"voiceChannel"` // required, will join by default
-	Owner        string `yaml:"owner"`        // optional, won't let you set permissions and use admin commands
-
-	//Encoder settings
-	FFmpegPath string `yaml:"ffmpegPath"` // optional, will look for FFmpeg executable in environment or its folder if not specified
+	Token       string `yaml:"token"`       // required, with Bot prefix
+	Guild       string `yaml:"guild"`       // required
+	TextChannel string `yaml:"textChannel"` // required, will listen to commands in this channel
+	Owner       string `yaml:"owner"`       // optional, won't let you set permissions and use admin commands
 
 	//Service settings
 	YoutubeAPIKey string `yaml:"ytApiKey"`
 }
 
-func (config *config) Load(configPath string) {
+func (config *Configuration) Load(configPath string) {
 	configFile, _ := ioutil.ReadFile(configPath)
 	if configFile != nil {
-		yaml.Unmarshal(configFile, &Config)
+		yaml.Unmarshal(configFile, &config)
 	}
 }
 
-func (config config) Validate() bool { // this is rather a placeholder for a meaningful implementation
-	return validateString(config.Token) && validateString(config.Guild) && validateString(config.TextChannel) && validateString(config.VoiceChannel)
+func (config Configuration) Validate() bool { // this is rather a placeholder for a meaningful implementation
+	return validateString(config.Token) && validateString(config.Guild) && validateString(config.TextChannel)
 }
 
 func validateString(input string) bool {
