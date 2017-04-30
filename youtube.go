@@ -97,25 +97,23 @@ func CreateQueueItem(url, requested string) (*QueueItem, error) {
 }
 
 func RetrievePlaylist(service *youtube.Service, url string, requested string, items chan *QueueItem) error {
-	defer close(items)
-
 	playlistItems, err := service.PlaylistItems.List("snippet").PlaylistId(url).MaxResults(50).Do()
 	if err != nil {
 		return err
 	}
 
 	go func() {
+		defer close(items)
+
 		for _, video := range playlistItems.Items {
-			video, err := CreateQueueItem(video.Snippet.ResourceId.VideoId, requested)
+			item, err := CreateQueueItem(video.Snippet.ResourceId.VideoId, requested)
 			if err != nil {
 				log.Println(err)
 				continue
 			}
 
-			items <- video
+			items <- item
 		}
-
-		close(items)
 	}()
 
 	return nil
