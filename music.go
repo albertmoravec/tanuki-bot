@@ -86,7 +86,7 @@ func (cmds *Commands) InitPlayer() {
 				return errors.New("No Youtube API key provided")
 			}
 
-			listRegexp := regexp.MustCompile(`youtube\.com/(?:playlist\?list=|watch\?v=[\w-]{11}(?:&index=\d+)*&list=)([\w-]{34}\b)`)
+			listRegexp := regexp.MustCompile(`^.*(?:youtu.be/|list=)([^#&?]*).*\b`)
 
 			service, err := youtube.New(bot.Player.ClientConfig.Client(context.Background()))
 			if err != nil {
