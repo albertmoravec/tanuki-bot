@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/rylio/ytdl"
 	"golang.org/x/oauth2/google"
@@ -70,6 +71,7 @@ func (yt *YoutubeItem) Stop() {
 func (yt *YoutubeItem) GetInfo() ItemInfo {
 	return ItemInfo{
 		Title:    yt.Video.Title,
+		Link:     "http://youtu.be/" + yt.Video.ID,
 		Duration: yt.Video.Duration.String(),
 	}
 }
@@ -117,6 +119,24 @@ func RetrievePlaylist(service *youtube.Service, url string, requested string, it
 	}()
 
 	return nil
+}
+
+func Find(service *youtube.Service, query string, requested string) (*QueueItem, error) {
+	videos, err := service.Search.List("snippet").Q(query).Type("video").MaxResults(1).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(videos.Items) == 0 {
+		return nil, errors.New("No video found")
+	}
+
+	item, err := CreateQueueItem(videos.Items[0].Id.VideoId, requested)
+	if err != nil {
+		return nil, err
+	}
+
+	return item, nil
 }
 
 func LoadYoutubeAPIConfig(filePath string) (*jwt.Config, error) {

@@ -322,6 +322,10 @@ func (cmds *Commands) InitPlayer() {
 						Value: song.Info.Title,
 					},
 					{
+						Name:  "Link:",
+						Value: song.Info.Link,
+					},
+					{
 						Name:   "Requested by:",
 						Value:  song.RequestedBy,
 						Inline: true,
@@ -357,7 +361,57 @@ func (cmds *Commands) InitPlayer() {
 		},
 	}
 
-	cmds.RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join, &pause)
+	purge := CommandConstructor{
+		Names:             []string{"purge", "pur"},
+		Permission:        "purge",
+		DefaultPermission: true,
+		NoArguments:       true,
+		MinArguments:      0,
+		MaxArguments:      -1,
+		RunFunc: func(bot *Bot, raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			if bot.Player == nil {
+				return ErrPlayerNotConnected
+			}
+
+			bot.Player.Purge()
+
+			return nil
+		},
+	}
+
+	find := CommandConstructor{
+		Names:             []string{"find", "f"},
+		Permission:        "find",
+		DefaultPermission: true,
+		NoArguments:       false,
+		MinArguments:      1,
+		MaxArguments:      -1,
+		RunFunc: func(bot *Bot, raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			if bot.Player == nil {
+				return ErrPlayerNotConnected
+			}
+
+			if bot.Player.ClientConfig == nil {
+				return errors.New("No Youtube API key provided")
+			}
+
+			service, err := youtube.New(bot.Player.ClientConfig.Client(context.Background()))
+			if err != nil {
+				return err
+			}
+
+			item, err := Find(service, strings.Join(raw, " "), m.Author.Username)
+			if err != nil {
+				log.Println(err)
+			}
+
+			bot.Player.Add(item)
+
+			return nil
+		},
+	}
+
+	cmds.RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join, &pause, &purge, &find)
 }
 
 func CreatePlayer(config *Configuration, session *discordgo.Session, voice *discordgo.VoiceConnection) *Player {
@@ -382,31 +436,29 @@ func CreatePlayer(config *Configuration, session *discordgo.Session, voice *disc
 
 	go func() {
 		for {
-			song := <-player.SongChannel
-			player.IsPlaying = true
-
-			player.DgoSession.UpdateStatus(0, song.Info.Title)
-			player.DgoSession.ChannelTopicEdit(config.TextChannel, "Playing: "+song.Info.Title)
-
-			player.Play(song.Stream)
-
-			player.DgoSession.UpdateStatus(0, "")
-			player.DgoSession.ChannelTopicEdit(config.TextChannel, "")
-
-			player.Queue.Remove(0)
-
 			select {
-			case <-player.QuitChannel:
-				player.IsPlaying = false
-				return
-			default:
+			case song := <-player.SongChannel:
+				player.IsPlaying = true
+
+				player.DgoSession.UpdateStatus(0, song.Info.Title)
+				player.DgoSession.ChannelTopicEdit(config.TextChannel, "Playing: "+song.Info.Title)
+
+				player.Play(song.Stream)
+
+				player.DgoSession.UpdateStatus(0, "")
+				player.DgoSession.ChannelTopicEdit(config.TextChannel, "")
+
+				player.Queue.Remove(0)
+
 				song, err := player.Queue.GetFirst()
 				if err == nil {
 					player.SongChannel <- song
 				}
-
+			case <-player.QuitChannel:
 				player.IsPlaying = false
+				return
 			}
+			player.IsPlaying = false
 		}
 	}()
 
@@ -454,13 +506,18 @@ func (player *Player) Play(stream Playable) {
 
 }
 
-func (player *Player) Stop() error {
+func (player *Player) Purge() {
 	player.Queue.Purge()
 
 	if player.IsPlaying {
 		player.StopChannel <- true
-		player.QuitChannel <- true
 	}
+}
+
+func (player *Player) Stop() error {
+	player.Purge()
+
+	player.QuitChannel <- true
 
 	if player.VoiceConnection != nil && player.Streamer != nil {
 		// wait for the player to stop, not sure if this is necessary?

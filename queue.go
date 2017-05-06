@@ -20,6 +20,7 @@ type Playable interface {
 
 type ItemInfo struct {
 	Title    string
+	Link     string
 	Duration string
 }
 
