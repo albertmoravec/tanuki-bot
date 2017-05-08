@@ -24,7 +24,6 @@ type Player struct {
 	QuitChannel     chan bool
 	VoiceConnection *discordgo.VoiceConnection
 	Streamer        *dca.StreamingSession
-	SendChannel     chan []int16
 	ClientConfig    *jwt.Config
 	GuildID         string
 	DgoSession      *discordgo.Session
@@ -421,7 +420,6 @@ func CreatePlayer(config *Configuration, session *discordgo.Session, voice *disc
 		PauseChannel:    make(chan bool),
 		StopChannel:     make(chan bool),
 		QuitChannel:     make(chan bool),
-		SendChannel:     make(chan []int16, 2),
 		DgoSession:      session,
 		VoiceConnection: voice,
 	}
