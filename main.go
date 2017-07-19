@@ -23,15 +23,10 @@ var (
 func init() {
 	Tanuki.Config = &Configuration{}
 
-	//configPath := flag.String("c", "config.yml", "Config file path") // allow using -c flag, flags will override config file
-	Tanuki.Config.Load("config.yml")
-
-	flag.StringVar(&Tanuki.Config.Token, "a", Tanuki.Config.Token, "Auth token")
-	flag.StringVar(&Tanuki.Config.Guild, "g", Tanuki.Config.Guild, "Guild ID")
-	flag.StringVar(&Tanuki.Config.TextChannel, "t", Tanuki.Config.TextChannel, "Text channel ID")
-	flag.StringVar(&Tanuki.Config.Owner, "o", Tanuki.Config.Owner, "Owner ID")
-	flag.StringVar(&Tanuki.Config.YoutubeAPIKey, "y", Tanuki.Config.YoutubeAPIKey, "Youtube API key")
+	configPath := flag.String("c", "config.yml", "Config file path")
 	flag.Parse()
+
+	Tanuki.Config.Load(*configPath)
 }
 
 func (bot *Bot) Init() {

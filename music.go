@@ -13,29 +13,40 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Player struct {
-	IsPlaying       bool
-	Queue           Queue
-	SongChannel     chan *QueueItem
-	PauseChannel    chan bool
-	StopChannel     chan bool
-	QuitChannel     chan bool
-	VoiceConnection *discordgo.VoiceConnection
-	Streamer        *dca.StreamingSession
-	ClientConfig    *jwt.Config
-	GuildID         string
-	DgoSession      *discordgo.Session
+	IsPlaying        bool
+	Queue            Queue
+	SongChannel      chan *QueueItem
+	CommandsChannel  chan PlayerCommand
+	Position         chan time.Duration
+	QuitChannel      chan bool
+	VoiceConnection  *discordgo.VoiceConnection
+	EncodingSettings *dca.EncodeOptions
+	Streamer         *dca.StreamingSession
+	ClientConfig     *jwt.Config
+	GuildID          string
+	DgoSession       *discordgo.Session
 }
+
+type PlayerCommand int
 
 var (
 	ErrPlayerConnected    error = errors.New("Player is already connected, use !stop")
 	ErrPlayerNotConnected error = errors.New("Player is not connected, use !join")
 )
 
+const (
+	Stop PlayerCommand = iota
+	Pause
+	Position
+)
+
 func (cmds *Commands) InitPlayer() {
 	//TODO make song recognition part of a service interface
+	//TODO try to join on play, queue etc.
 	queueSong := CommandConstructor{
 		Names:             []string{"queue", "q", "p"},
 		Permission:        "queue",
@@ -126,7 +137,7 @@ func (cmds *Commands) InitPlayer() {
 				return ErrPlayerNotConnected
 			}
 
-			bot.Player.Skip()
+			bot.Player.SendCommand(Stop)
 			return nil
 		},
 	}
@@ -355,7 +366,7 @@ func (cmds *Commands) InitPlayer() {
 				return ErrPlayerNotConnected
 			}
 
-			bot.Player.Pause()
+			bot.Player.SendCommand(Pause)
 			return nil
 		},
 	}
@@ -410,18 +421,34 @@ func (cmds *Commands) InitPlayer() {
 		},
 	}
 
-	cmds.RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join, &pause, &purge, &find)
+	position := CommandConstructor{
+		Names:             []string{"pos", "position"},
+		Permission:        "position",
+		DefaultPermission: true,
+		NoArguments:       true,
+		MinArguments:      0,
+		MaxArguments:      -1,
+		RunFunc: func(bot *Bot, raw []string, m *discordgo.MessageCreate, s *discordgo.Session) error {
+			bot.Player.SendCommand(Position)
+
+			s.ChannelMessageSend(m.ChannelID, "Current position: "+(<-bot.Player.Position).String())
+			return nil
+		},
+	}
+
+	cmds.RegisterCommands(&queueSong, &queueList, &skip, &stop, &playlist, &move, &remove, &info, &join, &pause, &purge, &find, &position)
 }
 
 func CreatePlayer(config *Configuration, session *discordgo.Session, voice *discordgo.VoiceConnection) *Player {
 	player := Player{
-		Queue:           Queue{},
-		SongChannel:     make(chan *QueueItem, 1),
-		PauseChannel:    make(chan bool),
-		StopChannel:     make(chan bool),
-		QuitChannel:     make(chan bool),
-		DgoSession:      session,
-		VoiceConnection: voice,
+		Queue:            Queue{},
+		EncodingSettings: &config.EncodeOptions,
+		SongChannel:      make(chan *QueueItem, 1),
+		CommandsChannel:  make(chan PlayerCommand),
+		Position:         make(chan time.Duration, 1),
+		QuitChannel:      make(chan bool),
+		DgoSession:       session,
+		VoiceConnection:  voice,
 	}
 
 	if config.YoutubeAPIKey != "" {
@@ -464,7 +491,7 @@ func CreatePlayer(config *Configuration, session *discordgo.Session, voice *disc
 }
 
 func (player *Player) Play(stream Playable) {
-	encoder, err := dca.EncodeMem(stream.Play(), dca.StdEncodeOptions)
+	encoder, err := dca.EncodeMem(stream.Play(), player.EncodingSettings)
 	defer encoder.Cleanup()
 	if err != nil {
 		log.Println(err)
@@ -484,16 +511,24 @@ func (player *Player) Play(stream Playable) {
 	//wait for commands
 	for {
 		select {
-		case <-player.StopChannel:
-			stream.Stop()
-			encoder.Stop()
-			return
-		case <-player.PauseChannel:
-			if player.Streamer.Paused() {
-				player.Streamer.SetPaused(false)
-			} else {
-				player.Streamer.SetPaused(true)
+		case cmd := <-player.CommandsChannel:
+			switch cmd {
+			case Stop:
+				stream.Stop()
+				encoder.Stop()
+				return
+			case Pause:
+				if player.Streamer.Paused() {
+					player.Streamer.SetPaused(false)
+				} else {
+					player.Streamer.SetPaused(true)
+				}
+				break
+			case Position:
+				player.Position <- player.Streamer.PlaybackPosition()
+				break
 			}
+
 		case err := <-done:
 			if err != nil {
 				log.Println(err)
@@ -507,9 +542,7 @@ func (player *Player) Play(stream Playable) {
 func (player *Player) Purge() {
 	player.Queue.Purge()
 
-	if player.IsPlaying {
-		player.StopChannel <- true
-	}
+	player.SendCommand(Stop)
 }
 
 func (player *Player) Stop() error {
@@ -547,14 +580,8 @@ func (player *Player) Add(item ...*QueueItem) {
 	}
 }
 
-func (player *Player) Skip() {
+func (player *Player) SendCommand(cmd PlayerCommand) {
 	if player.IsPlaying {
-		player.StopChannel <- true
-	}
-}
-
-func (player *Player) Pause() {
-	if player.IsPlaying {
-		player.PauseChannel <- true
+		player.CommandsChannel <- cmd
 	}
 }
