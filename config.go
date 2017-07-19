@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/jonas747/dca"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 )
@@ -14,6 +15,9 @@ type Configuration struct {
 
 	//Service settings
 	YoutubeAPIKey string `yaml:"ytApiKey"`
+
+	//FFmpeg settings
+	EncodeOptions dca.EncodeOptions `yaml:"encodeOptions"`
 }
 
 func (config *Configuration) Load(configPath string) {
@@ -24,7 +28,7 @@ func (config *Configuration) Load(configPath string) {
 }
 
 func (config Configuration) Validate() bool { // this is rather a placeholder for a meaningful implementation
-	return validateString(config.Token) && validateString(config.Guild) && validateString(config.TextChannel)
+	return validateString(config.Token) && validateString(config.Guild) && validateString(config.TextChannel) && config.EncodeOptions.Validate() == nil
 }
 
 func validateString(input string) bool {
