@@ -26,11 +26,3 @@ func (config *Configuration) Load(configPath string) {
 		yaml.Unmarshal(configFile, &config)
 	}
 }
-
-func (config Configuration) Validate() bool { // this is rather a placeholder for a meaningful implementation
-	return validateString(config.Token) && validateString(config.Guild) && validateString(config.TextChannel) && config.EncodeOptions.Validate() == nil
-}
-
-func validateString(input string) bool {
-	return input != ""
-}

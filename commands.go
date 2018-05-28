@@ -48,7 +48,7 @@ func (bot *Bot) ProcessCommand(s *discordgo.Session, m *discordgo.MessageCreate)
 		return
 	}
 
-	if m.ChannelID != bot.Config.TextChannel && !channel.IsPrivate {
+	if m.ChannelID != bot.Config.TextChannel || channel.Type != discordgo.ChannelTypeGuildText {
 		return
 	}
 

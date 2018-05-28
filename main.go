@@ -30,11 +30,6 @@ func init() {
 }
 
 func (bot *Bot) Init() {
-	if !bot.Config.Validate() {
-		log.Fatal("Invalid configuration")
-		return
-	}
-
 	bot.Commands = CreateCommands()
 
 	bot.Permissions = bot.Commands.InitPermissions("permissions.json")

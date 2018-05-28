@@ -466,12 +466,12 @@ func CreatePlayer(config *Configuration, session *discordgo.Session, voice *disc
 				player.IsPlaying = true
 
 				player.DgoSession.UpdateStatus(0, song.Info.Title)
-				player.DgoSession.ChannelTopicEdit(config.TextChannel, "Playing: "+song.Info.Title)
+				//player.DgoSession.ChannelTopicEdit(config.TextChannel, "Playing: "+song.Info.Title)
 
 				player.Play(song.Stream)
 
 				player.DgoSession.UpdateStatus(0, "")
-				player.DgoSession.ChannelTopicEdit(config.TextChannel, "")
+				//player.DgoSession.ChannelTopicEdit(config.TextChannel, "")
 
 				player.Queue.Remove(0)
 
