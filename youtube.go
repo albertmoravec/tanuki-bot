@@ -45,8 +45,9 @@ func (yt *YoutubeItem) Play() io.Reader {
 
 	return io.Reader(bufio.NewReaderSize(reader, 65536))
 	*/
-
-	yt.ytdlCmd = exec.Command("ytdl", "-s", "-f", "best-audio", "-o", "-", yt.Video.ID)
+	
+	/* using node-ytdl for now */
+	yt.ytdlCmd = exec.Command("ytdl", yt.Video.ID)
 	yt.ytdlCmd.Stderr = os.Stderr
 	youtubedlOut, err := yt.ytdlCmd.StdoutPipe()
 	if err != nil {
